@@ -1,7 +1,7 @@
 # ECE_443
 ### Bradley University Class work for ECE_443 Distributed Learning Control of Dynamic Systems
 
-Projects are programmed in Python as well as Matlab.
+Projects are programmed in Python as well as Matlab.  
 Projects are defined as assignments from the ECE_443 class.
 
 ### Class Description
