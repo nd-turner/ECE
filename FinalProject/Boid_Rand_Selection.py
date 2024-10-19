@@ -6,8 +6,8 @@ import math
 pygame.init()
 
 # Screen dimensions
-WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+WIDTH, HEIGHT = 1200, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 pygame.display.set_caption("Formation control with follower leader (boid model)")
 
 # Colors
@@ -16,26 +16,26 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
 # Boid parameters
-NUM_BOIDS = 200
-NUM_LEADERS = 3
-BOID_SIZE = 8
+NUM_BOIDS = 100
+NUM_LEADERS = 1
+BOID_SIZE = 10
 MAX_BOID_SPEED = 2
-LEADER_SPEED = 2
-TURN_SPEED = 0.05
-FORMATION_DISTANCE = 5
+LEADER_SPEED = .5
+TURN_SPEED = 0.1
+FORMATION_DISTANCE = 20
 FORMATION_SIZE = 4
-FORMATION_RADIUS = 80
-NEIGHBOR_RADIUS = 100
+FORMATION_RADIUS = 100
+NEIGHBOR_RADIUS = 10
 AVOID_DISTANCE = 15  # Minimum distance to avoid overlap
 
 # Obstacle parameters
-NUM_OBSTACLES = 0
-OBSTACLE_SIZE = 20
+NUM_OBSTACLES = 4
+OBSTACLE_SIZE = 15
 OBSTACLE_AVOIDANCE_DISTANCE = 30
-OBSTACLE_AVOIDANCE_FORCE = 5
+OBSTACLE_AVOIDANCE_FORCE = 10
 KP = 0.01
 KN = 0.5
-NEIGHBOR_AVOIDANCE_FORCE = 10
+NEIGHBOR_AVOIDANCE_FORCE = 15
 
 # Boundary parameters
 BOUNDARY_MARGIN = 50
@@ -46,7 +46,7 @@ def random_non_red_color():
         r = random.randint(0, 255)
         g = random.randint(0, 255)
         b = random.randint(0, 255)
-        if not (r > 200 and g < 100 and b < 100):  # Check that the color isn't too close to red
+        if not (r > 1 and g < 100 and b < 100):  # Check that the color isn't too close to red
             return (r, g, b)
 
 # Boid class
@@ -67,7 +67,7 @@ class Boid:
             self.change_direction_timer += 1
             if self.change_direction_timer > 120:  # Change direction every second (60 frames)
                 self.change_direction_timer = 0
-                random_angle_change = random.uniform(-math.pi/4, math.pi/4)
+                random_angle_change = random.uniform(-math.pi / 4, math.pi / 4)
                 self.angle += random_angle_change
                 self.vx = LEADER_SPEED * math.cos(self.angle)
                 self.vy = LEADER_SPEED * math.sin(self.angle)
@@ -79,8 +79,8 @@ class Boid:
                 self.vy = (self.vy / speed) * LEADER_SPEED
 
             # Move leader based on velocity
-            self.x += (self.vx/speed)
-            self.y += (self.vy/speed)
+            self.x += (self.vx / speed)
+            self.y += (self.vy / speed)
 
             # Update angle based on movement direction
             if self.vx != 0 or self.vy != 0:
@@ -132,6 +132,14 @@ class Boid:
                         self.vx += NEIGHBOR_AVOIDANCE_FORCE * math.cos(avoid_angle)
                         self.vy += NEIGHBOR_AVOIDANCE_FORCE * math.sin(avoid_angle)
 
+            # Apply obstacle avoidance
+            for obstacle in obstacles:
+                distance_to_obstacle = math.sqrt((obstacle.x - self.x) ** 2 + (obstacle.y - self.y) ** 2)
+                if distance_to_obstacle < OBSTACLE_AVOIDANCE_DISTANCE:
+                    avoid_angle = math.atan2(self.y - obstacle.y, self.x - obstacle.x)
+                    self.vx += OBSTACLE_AVOIDANCE_FORCE * math.cos(avoid_angle)
+                    self.vy += OBSTACLE_AVOIDANCE_FORCE * math.sin(avoid_angle)
+
             # Apply velocity limits
             speed = math.sqrt(self.vx**2 + self.vy**2)
             if speed > MAX_BOID_SPEED:
@@ -155,7 +163,7 @@ class Boid:
         # Draw the boid as a triangle with its color
         pygame.draw.polygon(screen, self.color, [tip, left_wing, right_wing])
 
-# Obstacle class (not used here)
+# Obstacle class
 class Obstacle:
     def __init__(self, x, y):
         self.x = x
@@ -164,8 +172,15 @@ class Obstacle:
     def draw(self):
         pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), OBSTACLE_SIZE)
 
+# Create obstacles at random positions
+obstacles = [Obstacle(random.randint(OBSTACLE_SIZE, WIDTH - OBSTACLE_SIZE), random.randint(OBSTACLE_SIZE, HEIGHT - OBSTACLE_SIZE)) for _ in range(NUM_OBSTACLES)]
+
 # Create boids with leaders
 boids = [Boid(random.randint(0, WIDTH), random.randint(0, HEIGHT), is_leader=(i < NUM_LEADERS)) for i in range(NUM_BOIDS)]
+
+# Timer for changing leaders
+leader_change_timer = 0
+LEADER_CHANGE_INTERVAL = 300  # Change leader every 5 seconds (300 frames)
 
 # Main loop
 running = True
@@ -176,11 +191,45 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.VIDEORESIZE:
+            # Update screen size when window is resized
+            WIDTH, HEIGHT = event.w, event.h
+            screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 
     # Update and draw boids
     for boid in boids:
-        boid.update(boids, [])
+        boid.update(boids, obstacles)
         boid.draw()
+
+    # Draw obstacles
+    for obstacle in obstacles:
+        obstacle.draw()
+
+    # Check if it's time to change the leader
+    leader_change_timer += 1
+    if leader_change_timer >= LEADER_CHANGE_INTERVAL:
+        # Reset the timer
+        leader_change_timer = 0
+
+        # Select a new leader from followers
+        current_leaders = [b for b in boids if b.is_leader]
+        
+        # Make current leaders followers
+        for leader in current_leaders:
+            leader.is_leader = False  # Make current leader a follower
+            leader.color = random_non_red_color()  # Change color to non-red
+
+        # Get followers
+        followers = [b for b in boids if not b.is_leader]
+        
+        # Ensure there are enough followers to change to leaders
+        num_new_leaders = min(NUM_LEADERS, len(followers))
+        if num_new_leaders > 0:
+            # Randomly select new leaders from followers
+            new_leaders = random.sample(followers, num_new_leaders)
+            for new_leader in new_leaders:
+                new_leader.is_leader = True  # Make this boid a leader
+                new_leader.color = RED  # Change color to red
 
     pygame.display.flip()
 
